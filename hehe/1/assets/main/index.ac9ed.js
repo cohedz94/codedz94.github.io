@@ -562,8 +562,12 @@ window.__require = function e(t, n, r) {
         window._GAME = _GAME;
         Object.keys(_GAME).map(function(moduleName) {
           try {
-            _GAME[moduleName].init();
-          } catch (error) {}
+            _GAME[moduleName].init && _GAME[moduleName].init();
+          } catch (error) {
+            console.log("====================================");
+            console.log("err", error);
+            console.log("====================================");
+          }
         });
         _GAME.utilsFB.log("ev_game_load_time", performance.now());
         _GAME.cocosLoadTime = (performance.now() / 1e3).toFixed(2);
@@ -3457,6 +3461,8 @@ window.__require = function e(t, n, r) {
       return newObj;
     }
     var BlockAsset = require("blockAsset");
+    var gameMap = {};
+    var noCanCopy = [];
     var mapVisual = {
       init: function init() {
         _GAME.mapVisual.createTable();
@@ -3464,21 +3470,21 @@ window.__require = function e(t, n, r) {
       createTable: function createTable(params) {
         var _this = this;
         var sampleNode = cc.find("Canvas/play_area/sample");
-        var height = sampleNode.height, width = sampleNode.width, ratio = height / width, nHeight = 60, nWidth = nHeight / ratio, scale = nHeight / height, space = 3;
+        var height = sampleNode.height, width = sampleNode.width, space = 3;
         var map = cc.find("Canvas/play_area/map");
-        [ 1, 2, 3, 4, 5 ].map(function(row) {
-          [ 1, 2, 3, 4, 5, 6, 7 ].map(function(col) {
+        [ 1, 2, 3, 4, 5 ].some(function(row) {
+          [ 1, 2, 3, 4, 5, 6, 7 ].some(function(col) {
             try {
               var newNode = cc.instantiate(sampleNode);
               newNode.name = row + "_" + col;
               newNode.active = true;
-              _this.genNewItem(newNode);
               newNode.x = (col - 4) * (width + space);
               newNode.y = -row * (height + space);
               map.addChild(newNode);
+              _this.genNewItem(row, col);
             } catch (error) {
               console.log("====================================");
-              console.log("err", err);
+              console.log("err", error);
               console.log("====================================");
             }
           });
@@ -3488,23 +3494,80 @@ window.__require = function e(t, n, r) {
         var _this2 = this;
         x = +x;
         y = +y;
-        [ 1, 2, 3, 4, 5 ].map(function(row) {
-          [ 1, 2, 3, 4, 5, 6, 7 ].map(function(col) {
-            if (col >= y - 1 && col <= y + 1 && row >= x - 1 && row <= x + 1) {
-              var block = cc.find("Canvas/play_area/map/" + row + "_" + col);
-              block.children.map(function(blockChild, childIndex) {
-                childIndex && (blockChild.active = false);
-              });
-              setTimeout(function() {
-                _this2.genNewItem(block);
-              }, 300);
-            }
+        [ 1, 2, 3, 4, 5 ].some(function(row) {
+          [ 1, 2, 3, 4, 5, 6, 7 ].some(function(col) {
+            col >= y - 1 && col <= y + 1 && row >= x - 1 && row <= x + 1 && _GAME.mapVisual.setEmpty(row, col);
+            5 == row && 7 == col && _this2.bomed();
           });
         });
       },
-      genNewItem: function genNewItem(newNode) {
+      bomed: function bomed() {
+        var _this3 = this;
+        setTimeout(function() {
+          var emp = [];
+          Object.keys(gameMap).some(function(key) {
+            var isInNoCanCopy = noCanCopy.some(function(el) {
+              return el.key == key;
+            });
+            gameMap[key].value || isInNoCanCopy || (emp = emp.concat(gameMap[key]));
+          });
+          emp.some(function(el, index) {
+            var row = el.row - 1;
+            while (row) {
+              if (_this3.copyValueNode(row, el.row, el.col)) break;
+              row--;
+            }
+            if (!row) {
+              noCanCopy.push(el);
+              noCanCopy.some(function(el) {
+                setTimeout(function() {
+                  _this3.genNewItem(el.row, el.col);
+                }, 300);
+              });
+            }
+          });
+        }, 300);
+      },
+      copyValueNode: function copyValueNode(rowSrc, rowDes, col) {
+        var newVal = this.getBlockValue(rowSrc, col);
+        if (newVal) {
+          this.setEmpty(rowSrc, col);
+          this.setNodeVal(rowDes, col, newVal);
+        }
+        return newVal;
+      },
+      getKey: function getKey(row, col) {
+        var key = row + "_" + col;
+        return key;
+      },
+      getBlockValue: function getBlockValue(row, col) {
+        var key = this.getKey(row, col);
+        return gameMap[key].value;
+      },
+      setEmpty: function setEmpty(row, col) {
+        this.setNodeVal(row, col, null);
+      },
+      genNewItem: function genNewItem(row, col) {
         var childIndex = _GAME.fx.makeRndBlock();
-        newNode.children[childIndex].active = true;
+        this.setNodeVal(row, col, childIndex);
+      },
+      setNodeVal: function setNodeVal(row, col, value) {
+        var block = cc.find("Canvas/play_area/map/" + row + "_" + col);
+        var key = this.getKey(row, col);
+        gameMap[key] || (gameMap[key] = {});
+        gameMap[key] = {
+          value: value,
+          row: row,
+          col: col,
+          key: key
+        };
+        block.children.some(function(child, index) {
+          index && (child.active = index == value);
+        });
+        value && (noCanCopy = noCanCopy.filter(function(el) {
+          return el.key != key;
+        }));
+        this.bomed();
       },
       resetSingleCell: function resetSingleCell(cellNumber) {
         var block = cc.find("Canvas/play_area/map/Image_HexBlock_" + cellNumber + "/sample_block");
@@ -3514,9 +3577,9 @@ window.__require = function e(t, n, r) {
         return block;
       },
       resetMap: function resetMap() {
-        var _this3 = this;
+        var _this4 = this;
         cc.find("Canvas/play_area/map").children.map(function(cell) {
-          return _this3.resetSingleCell(cell.name.replace("Image_HexBlock_", ""));
+          return _this4.resetSingleCell(cell.name.replace("Image_HexBlock_", ""));
         });
       },
       decorBlock: function decorBlock(blockNode, blockNumber) {
